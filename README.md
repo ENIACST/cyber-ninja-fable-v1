@@ -48,3 +48,21 @@ are reported as MISSING and never filled.
   end is only detectable against that anchor.
 
 No detector writes to the ledger yet: FVG waits for the original detector (§82).
+
+## Research, gates and indicators (CN-CP-003)
+
+- `cyberninja/authority.py` — approved CN-CP-003-R1 values; `tests/test_authority.py`
+  fails if any value drifts from the latest approved value in the doctrine. G7 is
+  MISSING for an empty risk field and cannot PASS until trade-level risk
+  validation (§43) exists.
+- `cyberninja/research/registry.py` — research ledger (hash-chained, `cyberninja/chain.py`):
+  pre-registration before any test (57.3, every variant counts in N), holdout
+  fixed at registration and opened only for the final G8, once per family;
+  refused requests are recorded (57.1). An API guard, not a sandbox.
+- `cyberninja/research/g8.py` — G8 against the approved thresholds (57.4–57.5),
+  bootstrap lower bound at level 1 − 0.05/N with a recorded seed; a metric not
+  given is MISSING. The backtester that will produce its inputs does not exist yet.
+- `cyberninja/indicators.py` — EMA, Wilder RSI, MACD 8/33/5 in Decimal; warm-up
+  values are the string `WARMUP`. Camarilla R3/R4/S3/S4 from the previous D1.
+- `cyberninja/specs.py`, `specs/TEMPLATE.md` — detector spec format and G3:
+  PASS only when the detector reproduces every golden vector.
