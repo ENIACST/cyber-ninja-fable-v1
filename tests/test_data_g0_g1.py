@@ -80,6 +80,7 @@ def test_conflicting_duplicate_never_hashes_like_a_clean_dataset():
     clean = klines([row(T0)])
     dirty = klines([row(T0), row(T0, c="42060.00")])
     assert bv.dataset_hash(dirty) != bv.dataset_hash(clean)
+    assert bv.dataset_hash(dirty) != bv.dataset_hash(klines([row(T0, c="42060.00")]))
     assert check(dirty, "4h").status == "INVALID"
 
 
