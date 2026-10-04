@@ -4,8 +4,9 @@
 
 Re-reads the archives the manifest names, by their recorded sha256, from the
 same data directory, and recomputes everything that depends only on them:
-content status, DATASET_HASH, DATA_VERSION, the integrity report and G1.
-No network. G0 is not replayed (it needs the live API). The result is written
+content status, DATASET_HASH, DATA_VERSION, the integrity report and
+G1_INTEGRITY. No network: G0 and the REST secondary validation in G1 need the
+live API and are not replayed. The result is written
 next to the manifest as <now>.replay.json; nothing is overwritten.
 """
 
@@ -16,10 +17,11 @@ import time
 from pathlib import Path
 
 from . import binance_vision as bv
-from .fetch import data_version, g1, integrity_doc, period_end_ms, read_archive
+from ..gates import gate_result
+from .fetch import data_version, g1_inputs, integrity_doc, period_end_ms, read_archive
 from .integrity import check
 
-SCOPE = ("DATASET_HASH", "DATA_VERSION", "G1", "integrity")
+SCOPE = ("DATASET_HASH", "DATA_VERSION", "G1_INTEGRITY", "integrity")
 
 
 def replay(manifest_path: Path, now_ms=None):
@@ -56,13 +58,13 @@ def replay(manifest_path: Path, now_ms=None):
     recomputed = {
         "DATASET_HASH": bv.dataset_hash(klines) if klines else None,
         "DATA_VERSION": data_version(files),
-        "G1": g1(report, files),
+        "G1_INTEGRITY": gate_result(g1_inputs(report, files)),
         "integrity": integrity_doc(report),
     }
     recorded = {
         "DATASET_HASH": fp["DATASET_HASH"],
         "DATA_VERSION": fp["DATA_VERSION"],
-        "G1": manifest["G1"],
+        "G1_INTEGRITY": manifest["G1_INTEGRITY"],
         "integrity": json.loads(integrity_path.read_text()),
     }
     differences = [k for k in SCOPE if recorded[k] != recomputed[k]]
@@ -88,7 +90,7 @@ def main(argv=None):
         return 2
     r = replay(Path(argv[0]))
     print(f"REPRODUCED={r['REPRODUCED']} differences={r['differences']} "
-          f"G1={r['recomputed']['G1']} hash={r['recomputed']['DATASET_HASH']}")
+          f"G1_INTEGRITY={r['recomputed']['G1_INTEGRITY']} hash={r['recomputed']['DATASET_HASH']}")
     return 0 if r["REPRODUCED"] == "PASS" else 1
 
 

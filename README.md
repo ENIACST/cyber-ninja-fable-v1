@@ -26,8 +26,12 @@ Re-check a recorded run offline from the stored archives (§9):
 python -m cyberninja.data.replay data/binance_um/runs/<dataset>/<run_id>.manifest.json
 ```
 
-It recomputes DATASET_HASH, DATA_VERSION, the integrity report and G1 and
+It recomputes DATASET_HASH, DATA_VERSION, the integrity report and G1_INTEGRITY and
 writes `<now>.replay.json` with REPRODUCED=PASS|FAIL next to the manifest.
 
-Gate results follow CN-CP-002 (PASS / FAIL / MISSING / UNKNOWN). Exit code 0
-only when G0=PASS and G1=PASS. Gaps are reported as MISSING and never filled.
+Gate results follow CN-CP-002 (PASS / FAIL / MISSING / UNKNOWN). G1 includes the
+§10 secondary validation: the same range is fetched from `/fapi/v1/klines` and
+compared candle by candle (closed candles only, per SERVER_TIME). Without
+network G1 is therefore MISSING, never PASS; `G1_INTEGRITY` is the archive-only
+part that replay recomputes. Exit code 0 only when G0=PASS and G1=PASS. Gaps
+are reported as MISSING and never filled.

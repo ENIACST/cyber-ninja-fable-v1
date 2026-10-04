@@ -142,6 +142,15 @@ def parse_zip(zip_bytes: bytes) -> list[Kline]:
     return out
 
 
+def parse_rest(rows: list) -> list[Kline]:
+    """/fapi/v1/klines rows: [open_time, "o", "h", "l", "c", "v", close_time, "qv", count, "tbv", "tbqv", "ignore"]."""
+    return [Kline(
+        open_time=int(r[0]), open=str(r[1]), high=str(r[2]), low=str(r[3]), close=str(r[4]),
+        volume=str(r[5]), close_time=int(r[6]), quote_volume=str(r[7]), count=int(r[8]),
+        taker_buy_volume=str(r[9]), taker_buy_quote_volume=str(r[10]),
+    ) for r in rows]
+
+
 def dataset_hash(klines: list[Kline]) -> str:
     """DATASET_HASH per CN-CP-001 §52.1 (approved 2026-10-04).
 

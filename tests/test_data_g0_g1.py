@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import urllib.error
+import urllib.parse
 import zipfile
 
 import pytest
@@ -143,8 +144,26 @@ def test_compare_sources_flags_conflict_by_value_not_spelling():
 
 # --- pipeline (offline: fetch is injected) -----------------------------------
 
-def fake_fetcher(archives, online=True):
+def rest_rows(archives, overrides=None):
+    rows = {}
+    for z in archives.values():
+        try:
+            for k in bv.parse_zip(z):
+                rows[k.open_time] = [k.open_time, k.open, k.high, k.low, k.close, k.volume, k.close_time,
+                                     k.quote_volume, k.count, k.taker_buy_volume, k.taker_buy_quote_volume, "0"]
+        except bv.MalformedArchive:
+            pass
+    rows.update(overrides or {})
+    return [r for r in (rows[t] for t in sorted(rows)) if r is not None]
+
+
+def fake_fetcher(archives, online=True, rest=None, server_time=1735689600123):
     def fetch(url):
+        if online and "/fapi/v1/klines" in url:
+            q = {k: int(v[0]) if v[0].isdigit() else v[0] for k, v in urllib.parse.parse_qs(urllib.parse.urlparse(url).query).items()}
+            src = rest if rest is not None else rest_rows(archives)
+            sel = [r for r in src if q["startTime"] <= r[0] <= q["endTime"]]
+            return json.dumps(sel[:q["limit"]]).encode()
         for name, z in archives.items():
             if url.endswith(name + ".CHECKSUM"):
                 return f"{hashlib.sha256(z).hexdigest()}  {name}\n".encode()
@@ -153,7 +172,7 @@ def fake_fetcher(archives, online=True):
         if online and url.endswith("exchangeInfo"):
             return json.dumps({"symbols": [{"symbol": "BTCUSDT", "contractType": "PERPETUAL"}]}).encode()
         if online and url.endswith("/time"):
-            return b'{"serverTime": 1735689600123}'
+            return json.dumps({"serverTime": server_time}).encode()
         raise urllib.error.URLError("offline")
     return fetch
 

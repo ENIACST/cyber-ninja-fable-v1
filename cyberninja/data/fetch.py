@@ -19,11 +19,13 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from . import binance_vision as bv
-from .integrity import beyond_period, check
+from .integrity import beyond_period, check, compare_sources
 from ..gates import gate_result
 
 EXCHANGE_INFO_URL = "https://fapi.binance.com/fapi/v1/exchangeInfo"
 SERVER_TIME_URL = "https://fapi.binance.com/fapi/v1/time"
+REST_KLINES_URL = "https://fapi.binance.com/fapi/v1/klines"
+REST_LIMIT = 1500
 
 
 def months(start: str, end: str) -> list[str]:
@@ -50,6 +52,11 @@ def periods(start: str, end: str) -> list[str]:
     if len(kinds) != 1:
         raise ValueError("--start and --end must both be YYYY-MM (monthly) or both YYYY-MM-DD (daily)")
     return months(start, end) if kinds == {"monthly"} else days(start, end)
+
+
+def period_start_ms(period: str) -> int:
+    d = date.fromisoformat(period if bv.period_kind(period) == "daily" else period + "-01")
+    return int(datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp() * 1000)
 
 
 def period_end_ms(period: str) -> int:
@@ -104,8 +111,45 @@ def data_version(files) -> str | None:
     return "bv-" + hashlib.sha256("\n".join(verified).encode()).hexdigest() if verified else None
 
 
-def g1(report, files) -> str:
-    return gate_result([report.status] + [f["content_status"] for f in files if "content_status" in f])
+def g1_inputs(report, files) -> list[str]:
+    """The archive-only part of G1: everything replay can recompute offline."""
+    return [report.status] + [f["content_status"] for f in files if "content_status" in f]
+
+
+def rest_klines(symbol, interval, start_ms, end_ms, fetch) -> list:
+    out, t = [], start_ms
+    while t < end_ms:
+        batch = json.loads(fetch(f"{REST_KLINES_URL}?symbol={symbol}&interval={interval}"
+                                 f"&startTime={t}&endTime={end_ms - 1}&limit={REST_LIMIT}"))
+        out.extend(bv.parse_rest(batch))
+        if len(batch) < REST_LIMIT:
+            break
+        t = int(batch[-1][6]) + 1
+    return out
+
+
+def secondary_validation(symbol, interval, start_ms, end_ms, archive, server_time, fetch) -> dict:
+    """§10 / §15: the same range from the independent REST endpoint, compared candle by candle."""
+    doc = {"source": REST_KLINES_URL, "compared": 0, "conflicts": [], "only_archive": [], "only_rest": []}
+    try:
+        rest = rest_klines(symbol, interval, start_ms, end_ms, fetch)
+    except (urllib.error.URLError, OSError) as e:
+        return doc | {"status": "MISSING", "error": str(e)}
+    except (ValueError, KeyError, IndexError, TypeError) as e:
+        return doc | {"status": "INVALID", "error": f"unreadable REST response: {e}"}
+    if server_time is None:
+        return doc | {"status": "UNKNOWN", "error": "no SERVER_TIME: closed-bar law (18.1) cannot be applied"}
+    rest = [k for k in rest if server_time >= k.close_time + 1]  # CN-CP-001 18.1: closed candles only
+    a, r = {k.open_time for k in archive}, {k.open_time for k in rest}
+    doc |= {"compared": len(a & r), "conflicts": [list(c) for c in compare_sources(archive, rest)],
+            "only_archive": sorted(a - r), "only_rest": sorted(r - a)}
+    if doc["conflicts"] or doc["only_rest"]:
+        status = "CONFLICT"   # the two sources disagree on a value or on whether a candle exists
+    elif doc["only_archive"] or not a:
+        status = "MISSING"    # nothing, or not everything, could be confirmed
+    else:
+        status = "VALID"
+    return doc | {"status": status}
 
 
 def integrity_doc(report) -> dict:
@@ -116,7 +160,8 @@ def integrity_doc(report) -> dict:
 def run(symbol, interval, start, end, out: Path, fetch=bv.fetch, now_ms=None):
     out.mkdir(parents=True, exist_ok=True)
     files, klines, beyond = [], [], []
-    for period in periods(start, end):
+    plist = periods(start, end)
+    for period in plist:
         try:
             entry, data = load_archive(symbol, interval, period, out, fetch)
         except bv.ChecksumMismatch as e:
@@ -144,6 +189,8 @@ def run(symbol, interval, start, end, out: Path, fetch=bv.fetch, now_ms=None):
 
     report = check(klines, interval)
     report.beyond_period = beyond
+    secondary = secondary_validation(symbol, interval, period_start_ms(plist[0]), period_end_ms(plist[-1]),
+                                     klines, server_time, fetch)
     manifest = {
         "fingerprint": {
             "SOURCE": "Binance Futures (USD-M) public archive",
@@ -164,7 +211,9 @@ def run(symbol, interval, start, end, out: Path, fetch=bv.fetch, now_ms=None):
         },
         "files": files,
         "G0": gate_result([f["checksum_status"] for f in files] + [contract_status]),
-        "G1": g1(report, files),
+        "SECONDARY_VALIDATION": secondary,
+        "G1_INTEGRITY": gate_result(g1_inputs(report, files)),
+        "G1": gate_result(g1_inputs(report, files) + [secondary["status"]]),
     }
     rep = integrity_doc(report)
 

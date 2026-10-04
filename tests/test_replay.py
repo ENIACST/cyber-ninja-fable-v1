@@ -61,7 +61,7 @@ def test_invalid_content_and_missing_months_are_reproduced_too(tmp_path):
     manifest, path = record(tmp_path, archives)
     assert manifest["G1"] == "FAIL"
     r = replay(path, now_ms=2)
-    assert r["REPRODUCED"] == "PASS" and r["recomputed"]["G1"] == "FAIL"
+    assert r["REPRODUCED"] == "PASS" and r["recomputed"]["G1_INTEGRITY"] == "FAIL"
 
 
 def test_replay_never_overwrites(tmp_path, clean):
