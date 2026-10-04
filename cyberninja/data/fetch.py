@@ -67,6 +67,33 @@ def load_month(symbol, interval, month, out_dir: Path, fetch=bv.fetch):
     return entry, data
 
 
+def read_archive(entry: dict, data: bytes, period_end: int):
+    """Parse a verified archive. Identity (checksum, G0) and content (G1) are
+    separate findings: unreadable content is kept as evidence and marked INVALID."""
+    try:
+        rows = bv.parse_zip(data)
+        entry["content_status"] = "VALID"
+    except bv.MalformedArchive as e:
+        rows = []
+        entry |= {"content_status": "INVALID", "error": str(e)}
+    return rows, beyond_period(rows, period_end)
+
+
+def data_version(files) -> str | None:
+    # Derived from the archive hashes: a re-published archive is a new DATA_VERSION (CN-CP-002 52.3).
+    verified = sorted(f"{f['file']}:{f['sha256']}" for f in files if f["checksum_status"] == "VALID")
+    return "bv-" + hashlib.sha256("\n".join(verified).encode()).hexdigest() if verified else None
+
+
+def g1(report, files) -> str:
+    return gate_result([report.status] + [f["content_status"] for f in files if "content_status" in f])
+
+
+def integrity_doc(report) -> dict:
+    # JSON round-trip so tuples compare equal to what a reader of the file sees.
+    return json.loads(json.dumps(asdict(report) | {"status": report.status, "missing_candles": report.missing_candles}))
+
+
 def run(symbol, interval, start, end, out: Path, fetch=bv.fetch, now_ms=None):
     out.mkdir(parents=True, exist_ok=True)
     files, klines, beyond = [], [], []
@@ -79,17 +106,10 @@ def run(symbol, interval, start, end, out: Path, fetch=bv.fetch, now_ms=None):
         except (urllib.error.URLError, OSError) as e:
             files.append({"file": bv.archive_name(symbol, interval, month), "checksum_status": "MISSING", "error": str(e)})
             continue
-        # Identity (checksum, G0) and content (G1) are separate findings: a verified
-        # archive with unreadable content is kept as evidence and marked INVALID.
-        try:
-            rows = bv.parse_zip(data)
-            entry["content_status"] = "VALID"
-        except bv.MalformedArchive as e:
-            rows = []
-            entry |= {"content_status": "INVALID", "error": str(e)}
+        rows, outside = read_archive(entry, data, month_end_ms(month))
         files.append(entry)
         klines.extend(rows)
-        beyond.extend(beyond_period(rows, month_end_ms(month)))
+        beyond.extend(outside)
 
     local_receive_ms = now_ms if now_ms is not None else int(time.time() * 1000)
 
@@ -105,7 +125,6 @@ def run(symbol, interval, start, end, out: Path, fetch=bv.fetch, now_ms=None):
 
     report = check(klines, interval)
     report.beyond_period = beyond
-    verified = sorted(f"{f['file']}:{f['sha256']}" for f in files if f["checksum_status"] == "VALID")
     manifest = {
         "fingerprint": {
             "SOURCE": "Binance Futures (USD-M) public archive",
@@ -121,15 +140,14 @@ def run(symbol, interval, start, end, out: Path, fetch=bv.fetch, now_ms=None):
             "SERVER_TIME": server_time,
             "SERVER_TIME_OFFSET": offset,
             "DATASET_ID": f"binance-um-{symbol}-{interval}-{start}-{end}",
-            # Derived from the archive hashes: a re-published archive is a new DATA_VERSION (CN-CP-002 52.3).
-            "DATA_VERSION": "bv-" + hashlib.sha256("\n".join(verified).encode()).hexdigest() if verified else None,
+            "DATA_VERSION": data_version(files),
             "DATASET_HASH": bv.dataset_hash(klines) if klines else None,
         },
         "files": files,
         "G0": gate_result([f["checksum_status"] for f in files] + [contract_status]),
-        "G1": gate_result([report.status] + [f["content_status"] for f in files if "content_status" in f]),
+        "G1": g1(report, files),
     }
-    rep = asdict(report) | {"status": report.status, "missing_candles": report.missing_candles}
+    rep = integrity_doc(report)
 
     run_dir = out / "runs" / f"{symbol}-{interval}-{start}-{end}"
     run_dir.mkdir(parents=True, exist_ok=True)
