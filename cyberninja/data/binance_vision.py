@@ -51,6 +51,10 @@ class ChecksumMismatch(Exception):
     pass
 
 
+class MalformedArchive(Exception):
+    """The archive passed its checksum but its content is not a kline CSV."""
+
+
 def archive_name(symbol: str, interval: str, month: str) -> str:
     return f"{symbol}-{interval}-{month}.zip"
 
@@ -98,9 +102,14 @@ def verify_zip(zip_bytes: bytes, checksum_text: str, name: str) -> str:
 
 
 def parse_zip(zip_bytes: bytes) -> list[Kline]:
-    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-        (member,) = zf.namelist()
-        text = zf.read(member).decode("ascii")
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            members = zf.namelist()
+            if len(members) != 1:
+                raise MalformedArchive(f"expected 1 file in archive, found {len(members)}")
+            text = zf.read(members[0]).decode("ascii")
+    except (zipfile.BadZipFile, UnicodeDecodeError) as e:
+        raise MalformedArchive(str(e)) from e
     rows = list(csv.reader(io.StringIO(text)))
     if rows and rows[0] and rows[0][0] == "open_time":  # newer files carry a header
         rows = rows[1:]
@@ -109,12 +118,15 @@ def parse_zip(zip_bytes: bytes) -> list[Kline]:
         if not r:
             continue
         if len(r) != len(COLUMNS):
-            raise ValueError(f"expected {len(COLUMNS)} columns, got {len(r)}: {r}")
-        out.append(Kline(
-            open_time=int(r[0]), open=r[1], high=r[2], low=r[3], close=r[4],
-            volume=r[5], close_time=int(r[6]), quote_volume=r[7], count=int(r[8]),
-            taker_buy_volume=r[9], taker_buy_quote_volume=r[10],
-        ))
+            raise MalformedArchive(f"expected {len(COLUMNS)} columns, got {len(r)}: {r}")
+        try:
+            out.append(Kline(
+                open_time=int(r[0]), open=r[1], high=r[2], low=r[3], close=r[4],
+                volume=r[5], close_time=int(r[6]), quote_volume=r[7], count=int(r[8]),
+                taker_buy_volume=r[9], taker_buy_quote_volume=r[10],
+            ))
+        except ValueError as e:
+            raise MalformedArchive(f"non-integer time or count: {r}") from e
     return out
 
 

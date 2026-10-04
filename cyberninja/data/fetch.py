@@ -64,7 +64,7 @@ def load_month(symbol, interval, month, out_dir: Path, fetch=bv.fetch):
     others = sorted(p.stem for p in vdir.glob("*.zip") if p.stem != sha)
     entry = {"file": name, "url": url, "sha256": sha, "checksum_status": "VALID",
              "other_versions_on_disk": others}
-    return entry, bv.parse_zip(data)
+    return entry, data
 
 
 def run(symbol, interval, start, end, out: Path, fetch=bv.fetch, now_ms=None):
@@ -72,13 +72,21 @@ def run(symbol, interval, start, end, out: Path, fetch=bv.fetch, now_ms=None):
     files, klines, beyond = [], [], []
     for month in months(start, end):
         try:
-            entry, rows = load_month(symbol, interval, month, out, fetch)
+            entry, data = load_month(symbol, interval, month, out, fetch)
         except bv.ChecksumMismatch as e:
             files.append({"file": bv.archive_name(symbol, interval, month), "checksum_status": "INVALID", "error": str(e)})
             continue
         except (urllib.error.URLError, OSError) as e:
             files.append({"file": bv.archive_name(symbol, interval, month), "checksum_status": "MISSING", "error": str(e)})
             continue
+        # Identity (checksum, G0) and content (G1) are separate findings: a verified
+        # archive with unreadable content is kept as evidence and marked INVALID.
+        try:
+            rows = bv.parse_zip(data)
+            entry["content_status"] = "VALID"
+        except bv.MalformedArchive as e:
+            rows = []
+            entry |= {"content_status": "INVALID", "error": str(e)}
         files.append(entry)
         klines.extend(rows)
         beyond.extend(beyond_period(rows, month_end_ms(month)))
@@ -119,7 +127,7 @@ def run(symbol, interval, start, end, out: Path, fetch=bv.fetch, now_ms=None):
         },
         "files": files,
         "G0": gate_result([f["checksum_status"] for f in files] + [contract_status]),
-        "G1": gate_result([report.status]),
+        "G1": gate_result([report.status] + [f["content_status"] for f in files if "content_status" in f]),
     }
     rep = asdict(report) | {"status": report.status, "missing_candles": report.missing_candles}
 

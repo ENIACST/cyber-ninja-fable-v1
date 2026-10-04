@@ -303,3 +303,30 @@ def test_t11_candle_beyond_archive_period_is_invalid(tmp_path):
     manifest, rep = run("BTCUSDT", "4h", "2024-01", "2024-01", tmp_path,
                         fetch=fake_fetcher(archives), now_ms=0)
     assert rep["beyond_period"] == [end] and rep["status"] == "INVALID" and manifest["G1"] == "FAIL"
+
+
+@pytest.mark.parametrize("label,content", [
+    ("two members", {"a.csv": row(T0), "b.csv": row(T0)}),
+    ("11 columns", {"a.csv": row(T0).rsplit(",", 1)[0]}),
+    ("non-integer time", {"a.csv": row(T0).replace(str(T0), "x", 1)}),
+    ("not ascii", {"a.csv": "\u00e9"}),
+    ("not a zip", None),
+])
+def test_malformed_archive_is_invalid_and_the_run_continues(tmp_path, label, content):
+    if content is None:
+        bad = b"not a zip"
+    else:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            for n, c in content.items():
+                zf.writestr(n, c)
+        bad = buf.getvalue()
+    feb = T0 + 31 * 86_400_000
+    archives = {"BTCUSDT-4h-2024-01.zip": bad, "BTCUSDT-4h-2024-02.zip": make_zip([row(feb)])}
+    manifest, rep = run("BTCUSDT", "4h", "2024-01", "2024-02", tmp_path, fetch=fake_fetcher(archives), now_ms=0)
+    jan, feb_entry = manifest["files"]
+    assert jan["checksum_status"] == "VALID" and jan["content_status"] == "INVALID" and jan["error"]
+    assert feb_entry["content_status"] == "VALID" and rep["candles"] == 1   # February still processed
+    assert manifest["G0"] == "PASS" and manifest["G1"] == "FAIL"
+    with pytest.raises(bv.MalformedArchive):
+        bv.parse_zip(bad)
