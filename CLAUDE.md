@@ -14,4 +14,5 @@ Non-negotiable, in short:
 - Approved changes are appended under GOVERNANCE EVENTS at the end of the doctrine. CN-CP-001 (approved) fixes closed-bar law, candle boundaries, event time semantics, the EVENT_ID recipe and the DATASET_HASH recipe; code must follow it exactly.
 - CN-CP-002 (approved) defines gate results (PASS/FAIL/MISSING/UNKNOWN, worst input wins, use `cyberninja/gates.py`), G5/G6 separation, archive closed-bar rule, data revisions, raw-OHLC basis and the Score vector.
 - Proposals live in `docs/proposals/` and stay as written; only Authority's explicit approval moves one into the doctrine.
+- CN-CP-003 + CN-CP-003-R1 (approved) define G8 acceptance criteria, the research registry/holdout rules, backtest risk values, detector spec format and indicator formulas. Their values live in `cyberninja/authority.py` and must match the doctrine; never change them without a new Governance Event.
 - Compute EVENT_ID only with `cyberninja/eec/event_id.py`, write events only through `cyberninja/eec/ledger.py`, and read events in replays/backtests only through `timeline.EventView` (no lookahead).
