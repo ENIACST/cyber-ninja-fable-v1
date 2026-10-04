@@ -119,7 +119,7 @@ def parse_zip(zip_bytes: bytes) -> list[Kline]:
 
 
 def dataset_hash(klines: list[Kline]) -> str:
-    """DATASET_HASH per CN-CP-001 §52.1 (proposal, approval PENDING).
+    """DATASET_HASH per CN-CP-001 §52.1 (approved 2026-10-04).
 
     Line = open_time|open|high|low|close|volume|close_time, Binance strings,
     sorted by open_time, identical lines once. Two different lines with the same
