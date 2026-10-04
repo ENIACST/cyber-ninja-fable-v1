@@ -11,6 +11,9 @@ python -m cyberninja.data.fetch --symbol BTCUSDT --interval 4h --start 2024-01 -
 python -m pytest -q
 ```
 
-Writes the verified zips, `*.manifest.json` (G0 fingerprint, DATASET_HASH) and
-`*.integrity.json` (G1 report) to `data/binance_um/` (git-ignored). Exit code 0
-only when G0=PASS and G1=VALID. Gaps are reported as MISSING and never filled.
+Writes to `data/binance_um/` (git-ignored) and never overwrites anything:
+`archives/<archive>/<sha256>.zip` holds each verified published version, and
+`runs/<dataset>/<run_id>.manifest.json` / `.integrity.json` hold the G0
+fingerprint, DATASET_HASH, DATA_VERSION and the G1 report of each run.
+Gate results follow CN-CP-002 (PASS / FAIL / MISSING / UNKNOWN). Exit code 0
+only when G0=PASS and G1=PASS. Gaps are reported as MISSING and never filled.

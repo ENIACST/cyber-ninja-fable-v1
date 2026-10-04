@@ -23,6 +23,7 @@ class Report:
     invalid_ohlc: list[tuple[int, str]] = field(default_factory=list)
     invalid_volume: list[tuple[int, str]] = field(default_factory=list)
     zero_volume: list[int] = field(default_factory=list)      # reported, not invalidating
+    beyond_period: list[int] = field(default_factory=list)    # CN-CP-002 18.4
     stale: bool = False
 
     @property
@@ -33,12 +34,14 @@ class Report:
     def status(self) -> str:
         if self.candles == 0:
             return "MISSING"
-        if self.duplicates or self.misaligned or self.bad_close_time or self.invalid_ohlc or self.invalid_volume:
+        if (self.duplicates or self.misaligned or self.bad_close_time or self.invalid_ohlc
+                or self.invalid_volume or self.beyond_period):
             return "INVALID"
-        if self.gaps:
-            return "MISSING"
+        # STALE before MISSING: both may hold, and STALE maps to the worse gate result (CN-CP-002 XVI.2)
         if self.stale:
             return "STALE"
+        if self.gaps:
+            return "MISSING"
         return "VALID"
 
 
@@ -97,6 +100,11 @@ def check(klines: list[Kline], interval: str, as_of_ms: int | None = None) -> Re
         # floor(as_of/step)*step - step; anything older means the feed stopped.
         rep.stale = rep.last_open_time < (as_of_ms // step) * step - step
     return rep
+
+
+def beyond_period(klines: list[Kline], period_end_ms: int) -> list[int]:
+    """CN-CP-002 18.4: an archive holds only candles that closed before its period ended."""
+    return [k.open_time for k in klines if k.close_time >= period_end_ms]
 
 
 def compare_sources(a: list[Kline], b: list[Kline]) -> list[tuple[int, str]]:

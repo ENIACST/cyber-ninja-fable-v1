@@ -12,3 +12,5 @@ Non-negotiable, in short:
 - Primary data: Binance Futures BTCUSDT PERPETUAL. TradingView is not a market-data source.
 - AI may propose; it may not approve its own changes, alter risk limits, or promote anything.
 - Approved changes are appended under GOVERNANCE EVENTS at the end of the doctrine. CN-CP-001 (approved) fixes closed-bar law, candle boundaries, event time semantics, the EVENT_ID recipe and the DATASET_HASH recipe; code must follow it exactly.
+- CN-CP-002 (approved) defines gate results (PASS/FAIL/MISSING/UNKNOWN, worst input wins, use `cyberninja/gates.py`), G5/G6 separation, archive closed-bar rule, data revisions, raw-OHLC basis and the Score vector.
+- Proposals live in `docs/proposals/` and stay as written; only Authority's explicit approval moves one into the doctrine.
