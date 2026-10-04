@@ -7,7 +7,7 @@ import zipfile
 import pytest
 
 from cyberninja.data import binance_vision as bv
-from cyberninja.data.fetch import month_end_ms, months, run
+from cyberninja.data.fetch import days, months, period_end_ms, periods, run
 from cyberninja.data.integrity import beyond_period, check, compare_sources
 from cyberninja.gates import gate_result
 
@@ -292,9 +292,9 @@ def test_t10_republished_archive_is_a_new_version_and_the_old_one_is_kept(tmp_pa
 
 
 def test_t11_candle_beyond_archive_period_is_invalid(tmp_path):
-    end = month_end_ms("2024-01")
+    end = period_end_ms("2024-01")
     assert end == T0 + 31 * 86_400_000
-    assert month_end_ms("2024-12") == 1735689600000            # December rolls into the next year
+    assert period_end_ms("2024-12") == 1735689600000            # December rolls into the next year
     last = end - H4
     assert beyond_period(klines([row(last)]), end) == []
     assert beyond_period(klines([row(end)]), end) == [end]

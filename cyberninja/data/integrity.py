@@ -7,7 +7,7 @@ A missing candle is MISSING, never zero and never interpolated.
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
-from .binance_vision import INTERVAL_MS, Kline
+from .binance_vision import ALIGN_OFFSET_MS, INTERVAL_MS, Kline
 
 
 @dataclass
@@ -54,6 +54,7 @@ def _dec(s: str) -> Decimal:
 
 def check(klines: list[Kline], interval: str, as_of_ms: int | None = None) -> Report:
     step = INTERVAL_MS[interval]
+    offset = ALIGN_OFFSET_MS.get(interval, 0)
     rep = Report(interval=interval, candles=len(klines))
     if not klines:
         return rep
@@ -74,7 +75,7 @@ def check(klines: list[Kline], interval: str, as_of_ms: int | None = None) -> Re
 
         # Epoch-ms timestamps in UTC; a shifted timezone or a seconds/microseconds
         # unit shows up here as misalignment.
-        if t % step:
+        if (t - offset) % step:
             rep.misaligned.append(t)
         if k.close_time != t + step - 1:
             rep.bad_close_time.append(t)

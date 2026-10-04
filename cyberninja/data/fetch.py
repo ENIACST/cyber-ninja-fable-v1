@@ -15,7 +15,7 @@ import sys
 import time
 import urllib.error
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from . import binance_vision as bv
@@ -36,15 +36,34 @@ def months(start: str, end: str) -> list[str]:
     return out
 
 
-def month_end_ms(month: str) -> int:
-    y, m = map(int, month.split("-"))
+def days(start: str, end: str) -> list[str]:
+    d, last = date.fromisoformat(start), date.fromisoformat(end)
+    out = []
+    while d <= last:
+        out.append(d.isoformat())
+        d += timedelta(days=1)
+    return out
+
+
+def periods(start: str, end: str) -> list[str]:
+    kinds = {bv.period_kind(start), bv.period_kind(end)}
+    if len(kinds) != 1:
+        raise ValueError("--start and --end must both be YYYY-MM (monthly) or both YYYY-MM-DD (daily)")
+    return months(start, end) if kinds == {"monthly"} else days(start, end)
+
+
+def period_end_ms(period: str) -> int:
+    if bv.period_kind(period) == "daily":
+        d = date.fromisoformat(period) + timedelta(days=1)
+        return int(datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp() * 1000)
+    y, m = map(int, period.split("-"))
     y, m = (y + 1, 1) if m == 12 else (y, m + 1)
     return int(datetime(y, m, 1, tzinfo=timezone.utc).timestamp() * 1000)
 
 
-def load_month(symbol, interval, month, out_dir: Path, fetch=bv.fetch):
-    name = bv.archive_name(symbol, interval, month)
-    url = bv.archive_url(symbol, interval, month)
+def load_archive(symbol, interval, period, out_dir: Path, fetch=bv.fetch):
+    name = bv.archive_name(symbol, interval, period)
+    url = bv.archive_url(symbol, interval, period)
     checksum = fetch(url + ".CHECKSUM").decode("ascii")
     expected = bv.parse_checksum(checksum, name)
     # Stored under its own hash: a re-published archive lands beside the old
@@ -97,16 +116,16 @@ def integrity_doc(report) -> dict:
 def run(symbol, interval, start, end, out: Path, fetch=bv.fetch, now_ms=None):
     out.mkdir(parents=True, exist_ok=True)
     files, klines, beyond = [], [], []
-    for month in months(start, end):
+    for period in periods(start, end):
         try:
-            entry, data = load_month(symbol, interval, month, out, fetch)
+            entry, data = load_archive(symbol, interval, period, out, fetch)
         except bv.ChecksumMismatch as e:
-            files.append({"file": bv.archive_name(symbol, interval, month), "checksum_status": "INVALID", "error": str(e)})
+            files.append({"file": bv.archive_name(symbol, interval, period), "checksum_status": "INVALID", "error": str(e)})
             continue
         except (urllib.error.URLError, OSError) as e:
-            files.append({"file": bv.archive_name(symbol, interval, month), "checksum_status": "MISSING", "error": str(e)})
+            files.append({"file": bv.archive_name(symbol, interval, period), "checksum_status": "MISSING", "error": str(e)})
             continue
-        rows, outside = read_archive(entry, data, month_end_ms(month))
+        rows, outside = read_archive(entry, data, period_end_ms(period))
         files.append(entry)
         klines.extend(rows)
         beyond.extend(outside)
@@ -129,7 +148,7 @@ def run(symbol, interval, start, end, out: Path, fetch=bv.fetch, now_ms=None):
         "fingerprint": {
             "SOURCE": "Binance Futures (USD-M) public archive",
             "HOST": bv.HOST,
-            "ENDPOINT": f"/{bv.MARKET_PATH}/{symbol}/{interval}/",
+            "ENDPOINT": f"/{bv.MARKET_PATH.format(kind=bv.period_kind(start))}/{symbol}/{interval}/",
             "SYMBOL": symbol,
             "PAIR": symbol,
             "CONTRACT_TYPE": bv.contract_type_from_symbol(symbol),
@@ -160,9 +179,11 @@ def run(symbol, interval, start, end, out: Path, fetch=bv.fetch, now_ms=None):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--symbol", default="BTCUSDT")
-    p.add_argument("--interval", default="4h", choices=sorted(bv.INTERVAL_MS))
-    p.add_argument("--start", required=True, help="YYYY-MM")
-    p.add_argument("--end", required=True, help="YYYY-MM (inclusive, completed months only)")
+    # No 1w: a weekly candle crossing a month end cannot satisfy CN-CP-002 18.4 in a
+    # monthly archive. W1 is built from complete D1 weeks (cyberninja.data.resample).
+    p.add_argument("--interval", default="4h", choices=sorted(set(bv.INTERVAL_MS) - {"1w"}))
+    p.add_argument("--start", required=True, help="YYYY-MM (monthly archives) or YYYY-MM-DD (daily archives)")
+    p.add_argument("--end", required=True, help="same form as --start, inclusive; completed periods only")
     p.add_argument("--out", type=Path, default=Path("data/binance_um"))
     a = p.parse_args(argv)
     manifest, rep = run(a.symbol, a.interval, a.start, a.end, a.out)

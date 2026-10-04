@@ -8,8 +8,13 @@ Standard library only; tests need `pytest`.
 
 ```
 python -m cyberninja.data.fetch --symbol BTCUSDT --interval 4h --start 2024-01 --end 2024-06
+python -m cyberninja.data.fetch --interval 4h --start 2024-07-01 --end 2024-07-15   # daily archives
 python -m pytest -q
 ```
+
+YYYY-MM uses monthly archives, YYYY-MM-DD daily ones (for the current, not yet
+archived month). W1 is not downloaded: `cyberninja.data.resample.weekly_from_daily`
+builds it from complete D1 weeks (Monday 00:00 UTC) and reports incomplete weeks.
 
 Writes to `data/binance_um/` (git-ignored) and never overwrites anything:
 `archives/<archive>/<sha256>.zip` holds each verified published version, and

@@ -16,7 +16,8 @@ import zipfile
 from dataclasses import dataclass
 
 HOST = "data.binance.vision"
-MARKET_PATH = "data/futures/um/monthly/klines"  # um = USD-M futures, klines = last price
+# um = USD-M futures, klines = last price; {kind} is "monthly" or "daily"
+MARKET_PATH = "data/futures/um/{kind}/klines"
 PRICE_TYPE = "LAST"  # markPriceKlines would be MARK; not used here
 
 COLUMNS = (
@@ -26,10 +27,11 @@ COLUMNS = (
 
 INTERVAL_MS = {
     "1m": 60_000, "5m": 300_000, "15m": 900_000, "1h": 3_600_000,
-    "4h": 14_400_000, "1d": 86_400_000,
+    "4h": 14_400_000, "1d": 86_400_000, "1w": 604_800_000,
 }
-# 1w is deliberately absent: weekly candles open Monday 00:00 UTC, not on an
-# epoch multiple, so the alignment check below would be wrong for them.
+# CN-CP-001 18.2: W1 opens Monday 00:00 UTC. The epoch (1970-01-01) was a
+# Thursday, so weekly open_times sit 4 days after a multiple of 7 days.
+ALIGN_OFFSET_MS = {"1w": 4 * 86_400_000}
 
 
 @dataclass(frozen=True)
@@ -59,8 +61,18 @@ def archive_name(symbol: str, interval: str, month: str) -> str:
     return f"{symbol}-{interval}-{month}.zip"
 
 
-def archive_url(symbol: str, interval: str, month: str) -> str:
-    return f"https://{HOST}/{MARKET_PATH}/{symbol}/{interval}/{archive_name(symbol, interval, month)}"
+def period_kind(period: str) -> str:
+    """"YYYY-MM" is a monthly archive, "YYYY-MM-DD" a daily one."""
+    if re.fullmatch(r"\d{4}-\d{2}", period):
+        return "monthly"
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", period):
+        return "daily"
+    raise ValueError(f"period must be YYYY-MM or YYYY-MM-DD, got {period!r}")
+
+
+def archive_url(symbol: str, interval: str, period: str) -> str:
+    path = MARKET_PATH.format(kind=period_kind(period))
+    return f"https://{HOST}/{path}/{symbol}/{interval}/{archive_name(symbol, interval, period)}"
 
 
 def contract_type_from_symbol(symbol: str) -> str:

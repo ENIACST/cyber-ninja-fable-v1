@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 from . import binance_vision as bv
-from .fetch import data_version, g1, integrity_doc, month_end_ms, read_archive
+from .fetch import data_version, g1, integrity_doc, period_end_ms, read_archive
 from .integrity import check
 
 SCOPE = ("DATASET_HASH", "DATA_VERSION", "G1", "integrity")
@@ -46,7 +46,7 @@ def replay(manifest_path: Path, now_ms=None):
             continue
         entry["checksum_status"] = "VALID"
         period = f["file"].removeprefix(f"{symbol}-{interval}-").removesuffix(".zip")
-        rows, outside = read_archive(entry, data, month_end_ms(period))
+        rows, outside = read_archive(entry, data, period_end_ms(period))
         files.append(entry)
         klines.extend(rows)
         beyond.extend(outside)
