@@ -18,17 +18,17 @@ PRICE_TYPES = ("LAST", "MARK")
 DIRECTIONS = ("BULL", "BEAR", None)
 
 
-def _reject_floats(x, where):
+def reject_floats(x, where):
     # 51.2: numbers that are not integers travel as decimal strings, so the
     # hash never depends on how a language prints a float.
     if isinstance(x, float):
         raise ValueError(f"{where}: float {x!r}; use a decimal string")
     if isinstance(x, dict):
         for k, v in x.items():
-            _reject_floats(v, f"{where}.{k}")
+            reject_floats(v, f"{where}.{k}")
     elif isinstance(x, list):
         for i, v in enumerate(x):
-            _reject_floats(v, f"{where}[{i}]")
+            reject_floats(v, f"{where}[{i}]")
 
 
 def canonical_payload(payload: dict) -> bytes:
@@ -44,7 +44,7 @@ def canonical_payload(payload: dict) -> bytes:
         raise ValueError(f"direction must be one of {DIRECTIONS}")
     if not isinstance(payload["params"], dict):
         raise ValueError("params must be an object")
-    _reject_floats(payload["params"], "params")
+    reject_floats(payload["params"], "params")
     times = payload["source_open_times"]
     if (not isinstance(times, list) or not times
             or any(type(t) is not int for t in times)

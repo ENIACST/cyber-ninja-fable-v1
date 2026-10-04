@@ -35,3 +35,16 @@ compared candle by candle (closed candles only, per SERVER_TIME). Without
 network G1 is therefore MISSING, never PASS; `G1_INTEGRITY` is the archive-only
 part that replay recomputes. Exit code 0 only when G0=PASS and G1=PASS. Gaps
 are reported as MISSING and never filled.
+
+## EEC — Event Evidence (CN-CP-001)
+
+- `cyberninja/eec/event_id.py` — EVENT_ID per §51.1 (canonical payload, `ev_` + sha256).
+- `cyberninja/eec/timeline.py` — closed-bar law (18.1), AVAILABLE_FROM and pivot
+  confirmation (18.3), HTF visibility, `EventView` that never returns an event
+  before AVAILABLE_FROM, and G2 from the reads actually made.
+- `cyberninja/eec/ledger.py` — append-only, hash-chained JSONL ledger (§50–§52).
+  `verify(path, anchor)` detects edits, deletions, reordering and truncation;
+  keep `head(path)` outside the ledger, because removing whole lines from the
+  end is only detectable against that anchor.
+
+No detector writes to the ledger yet: FVG waits for the original detector (§82).
