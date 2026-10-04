@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pytest
+      - run: python -m pytest -q
+      - name: Append-only history (§5)
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            base="origin/$PR_BASE"
+          elif [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            base="origin/$DEFAULT_BRANCH"
+          else
+            base="$BEFORE"
+          fi
+          python tools/check_append_only.py "$base"

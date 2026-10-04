@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Cyber Ninja market data (downloaded archives, manifests, reports)
+/data/
