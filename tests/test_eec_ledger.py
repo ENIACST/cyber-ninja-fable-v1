@@ -13,7 +13,7 @@ DS = "ds_" + "a" * 64
 def rec(i=0, **over):
     p = payload(source_open_times=[T0 + i * H4, T0 + (i + 1) * H4, T0 + (i + 2) * H4])
     conf = T0 + (i + 3) * H4 - 1
-    r = p | {"event_id": event_id(p), "event_time": conf, "formation_time": T0 + i * H4,
+    r = p | {"event_id": event_id(p), "formation_time": T0 + i * H4,
              "confirmation_time": conf, "available_from": conf + 1, "receive_time": 5,
              "dataset_hash": DS, "feature_version": "f1", "validation_status": "VALID",
              "parent_event_id": None, "data": {"top": "42100.00", "bottom": "41950.50"}}
@@ -148,3 +148,15 @@ def test_consistently_rehashed_chain_with_a_skipped_seq_is_invalid(tmp_path):
     path.write_bytes(b"\n".join(out) + b"\n")
     status, problems = ledger.verify(path)
     assert status == "INVALID" and problems == ["line 1: seq 2"]
+
+
+def test_t24_event_time_is_not_a_ledger_field(tmp_path):
+    # CN-CP-004 52.4: the event's times are formation_time, confirmation_time and available_from only.
+    with pytest.raises(ValueError, match="not allowed.*event_time"):
+        ledger.append(tmp_path / "l", rec(0) | {"event_time": T0})
+    assert "event_time" not in ledger.RECORD_FIELDS
+
+
+def test_t25_record_with_the_three_18_3_times_is_accepted(tmp_path):
+    r = ledger.append(tmp_path / "l", rec(0))
+    assert {"formation_time", "confirmation_time", "available_from"} <= set(r) and "event_time" not in r

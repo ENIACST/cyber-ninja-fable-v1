@@ -4,6 +4,7 @@ cyberninja.chain (hash chain, anchor, refusal to extend a broken chain).
 Rules on append:
 - event_id must equal the EVENT_ID recomputed from the payload (§51.1).
 - available_from = confirmation_time + 1 and formation_time <= confirmation_time (18.3).
+  These three are the event's only times: EVENT_TIME is not a ledger field (CN-CP-004 52.4).
 - An event_id already in the ledger may appear again only as a new
   observation with parent_event_id set (CN-CP-002 51.3); a parent must exist.
 - No floats anywhere (51.2): non-integer numbers are decimal strings.
@@ -19,7 +20,7 @@ from ..chain import GENESIS, canonical as _canonical, record_hash as _hash  # no
 from .event_id import PAYLOAD_FIELDS, event_id_of, reject_floats
 
 STATUSES = ("VALID", "INVALID", "MISSING", "STALE", "CONFLICT", "UNKNOWN")
-INT_FIELDS = ("event_time", "formation_time", "confirmation_time", "available_from", "receive_time")
+INT_FIELDS = ("formation_time", "confirmation_time", "available_from", "receive_time")
 RECORD_FIELDS = PAYLOAD_FIELDS + INT_FIELDS + (
     "event_id", "dataset_hash", "feature_version", "validation_status", "parent_event_id", "data")
 
