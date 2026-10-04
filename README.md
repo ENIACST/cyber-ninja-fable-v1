@@ -66,3 +66,21 @@ No detector writes to the ledger yet: FVG waits for the original detector (§82)
   values are the string `WARMUP`. Camarilla R3/R4/S3/S4 from the previous D1.
 - `cyberninja/specs.py`, `specs/TEMPLATE.md` — detector spec format and G3:
   PASS only when the detector reproduces every golden vector.
+
+## Backtester (EXECUTION = OFF)
+
+`cyberninja/backtest.py` simulates trades from signals (`Signal`: evidence ref,
+AVAILABLE_FROM, side, stop, optional target) with the approved R1 costs. Entry
+at the first open at or after AVAILABLE_FROM; stop/target at their price or at
+the open on a gap, stop first when a candle touches both; taker fee and adverse
+slippage on every fill; actual funding events (`FundingSeries`); ENTRY-based
+1 % risk capped at 3x; daily loss limit; drawdown against intrabar troughs.
+Rejected signals keep their reason.
+
+- `backtest_research(registry, hypothesis, candles, signals)` runs a registered
+  hypothesis on research data only (the holdout is never passed in).
+- `walk_forward`, `oos_windows`, `mean_r` build the G8 inputs; trades without
+  funding data make the OOS input MISSING.
+- `trade_level_status` is G7's trade-level input. It is UNKNOWN until a margin
+  model and maintenance margin are approved: the liquidation buffer (42.2)
+  cannot be checked without them.
